@@ -15,7 +15,6 @@ FetchContent_Declare(
 
 set(${LIB_NAME}_NO_EXAMPLES True)
 set(${LIB_NAME}_NO_UNITTESTS True)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build JsonDatabase as static library.")
 message("Downloading dependency: ${LIB_NAME} from: ${GIT_REPO} tag: ${GIT_TAG}")
 FetchContent_MakeAvailable(${LIB_NAME})
 
