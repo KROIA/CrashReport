@@ -161,63 +161,57 @@ IF(NOT QT_MISSING)
 ENDIF()
 
 
-macro(qt_wrap_internal_cpp outFiles)
+function(qt_wrap_internal_cpp outFiles)
+    cmake_parse_arguments(inFiles "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    set(inFiles ${inFiles_UNPARSED_ARGUMENTS})
     # Get the length of the list
-    list(LENGTH ARGV listLength)
-    if(listLength GREATER  1)
-        # Get all parameters after the first one
-        set(IN_FILES ${ARGV})
-        list(REMOVE_AT IN_FILES 0)
-
+    list(LENGTH inFiles listLength)
+    if(listLength GREATER  0)
         # Call qt_wrap_cpp with the parsed arguments
         if(${QT_MAJOR_VERSION} EQUAL 5)
-            qt5_wrap_cpp(${outFiles} ${IN_FILES})
+            qt5_wrap_cpp(${outFiles} ${inFiles})
         elseif(${QT_MAJOR_VERSION} EQUAL 6)
-            qt6_wrap_cpp(${outFiles} ${IN_FILES})
+            qt6_wrap_cpp(${outFiles} ${inFiles})
         endif()
 
         # Export the output files variable for parent scope
         set(${outFiles} ${${outFiles}} PARENT_SCOPE)
     endif()
-endmacro()
+endfunction()
 
 
-macro(qt_wrap_internal_ui outFiles)
+function(qt_wrap_internal_ui outFiles)
+    cmake_parse_arguments(inFiles "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    set(inFiles ${inFiles_UNPARSED_ARGUMENTS})
     # Get the length of the list
-    list(LENGTH ARGV listLength)
-    if(listLength GREATER  1)
-        # Get all parameters after the first one
-        set(IN_FILES ${ARGV})
-        list(REMOVE_AT IN_FILES 0)
-
+    list(LENGTH inFiles listLength)
+    if(listLength GREATER  0)
         # Call qt_wrap_cpp with the parsed arguments
         if(${QT_MAJOR_VERSION} EQUAL 5)
-            qt5_wrap_ui(${outFiles} ${IN_FILES})
+            qt5_wrap_ui(${outFiles} ${inFiles})
         elseif(${QT_MAJOR_VERSION} EQUAL 6)
-            qt6_wrap_ui(${outFiles} ${IN_FILES})
+            qt6_wrap_ui(${outFiles} ${inFiles})
         endif()
 
         # Export the output files variable for parent scope
         set(${outFiles} ${${outFiles}} PARENT_SCOPE)
     endif()
-endmacro()
+endfunction()
 
-macro(qt_add_internal_resources outFiles)
+function(qt_add_internal_resources outFiles)
+    cmake_parse_arguments(inFiles "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    set(inFiles ${inFiles_UNPARSED_ARGUMENTS})
     # Get the length of the list
-    list(LENGTH ARGV listLength)
-    if(listLength GREATER  1)
-        # Get all parameters after the first one
-        set(IN_FILES ${ARGV})
-        list(REMOVE_AT IN_FILES 0)
-
+    list(LENGTH inFiles listLength)
+    if(listLength GREATER  0)
         # Call qt_wrap_cpp with the parsed arguments
         if(${QT_MAJOR_VERSION} EQUAL 5)
-            qt5_add_resources(${outFiles} ${IN_FILES})
+            qt5_add_resources(${outFiles} ${inFiles})
         elseif(${QT_MAJOR_VERSION} EQUAL 6)
-            qt6_add_resources(${outFiles} ${IN_FILES})
+            qt6_add_resources(${outFiles} ${inFiles})
         endif()
 
         # Export the output files variable for parent scope
         set(${outFiles} ${${outFiles}} PARENT_SCOPE)
     endif()
-endmacro()
+endfunction()
