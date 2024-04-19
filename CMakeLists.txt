@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.20)
 
 
 ## INFO
-## Template version: 1.0.0
+## Template version: 1.1.0
 ##
 ## This is a template for a CMake project.
 ## It is designed to be used with the Visual Studio
@@ -27,6 +27,7 @@ cmake_minimum_required(VERSION 3.20)
 ## --------------------------------------------------------------------------------
 ## -------------------- Project settings ------------------------------------------
 ## --------------------------------------------------------------------------------
+include(cmake/utility.cmake)
 
 # Name of the library
 set(LIBRARY_NAME CrashReport)                   # <AUTO_REPLACED>
@@ -68,8 +69,8 @@ set(RELATIVE_BUILD_FOLDER build)                # Relative path to the build fol
 set(RELATIVE_INSTALL_FOLDER lib)                # Relative path to the install folder
 
 
-set(COMPILE_EXAMPLES ON)						# <AUTO_REPLACED> 
-set(COMPILE_UNITTESTS ON)						# <AUTO_REPLACED> 
+set_if_not_defined(COMPILE_EXAMPLES ON)						# <AUTO_REPLACED> 
+set_if_not_defined(COMPILE_UNITTESTS ON)					# <AUTO_REPLACED> 
 
 ## USER_SECTION_START 3
 
@@ -79,7 +80,16 @@ set(COMPILE_UNITTESTS ON)						# <AUTO_REPLACED>
 # -------------------- Dependencies ----------------------------------------------
 # --------------------------------------------------------------------------------
 
-set(QT_INSTALL_BASE "C:\\Qt")
+## USER_SECTION_START 8
+
+## USER_SECTION_END
+
+set_if_not_defined(QT_INSTALL_BASE "C:/Qt")
+set_if_not_defined(QT_MAJOR_VERSION 5)
+set_if_not_defined(QT_VERSION "autoFind")
+set_if_not_defined(QT_COMPILER "autoFind")
+
+
 
 ## USER_SECTION_START 7
 
@@ -109,7 +119,6 @@ link_directories(${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
 
 include(cmake/QtLocator.cmake)
-include(cmake/utility.cmake)
 include(cmake/dependencies.cmake)
 include(cmake/ExampleMaster.cmake)
 
