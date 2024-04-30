@@ -1,6 +1,15 @@
 ## description: DbgHelp
 
-# Add this library to the specific profiles of this project
-list(APPEND DEPENDENCIES_FOR_SHARED_LIB DbgHelp.lib)
-list(APPEND DEPENDENCIES_FOR_STATIC_LIB DbgHelp.lib)
-list(APPEND DEPENDENCIES_FOR_STATIC_PROFILE_LIB DbgHelp.lib) # only use for static profiling profile
+function(dep SHARED_LIB STATIC_LIB STATIC_PROFILE_LIB)
+
+	# Add this library to the specific profiles of this project
+	list(APPEND DEPS_FOR_SHARED_LIB DbgHelp.lib)
+	list(APPEND DEPS_FOR_STATIC_LIB DbgHelp.lib)
+	list(APPEND DEPS_FOR_STATIC_PROFILE_LIB DbgHelp.lib)
+
+    set(${SHARED_LIB} "${${SHARED_LIB}};${DEPS_FOR_SHARED_LIB}" PARENT_SCOPE)
+    set(${STATIC_LIB} "${${STATIC_LIB}};${DEPS_FOR_STATIC_LIB}" PARENT_SCOPE)
+    set(${STATIC_PROFILE_LIB} "${${STATIC_PROFILE_LIB}};${DEPS_STATIC_PROFILE_LIB}" PARENT_SCOPE)
+endfunction()
+
+dep(DEPENDENCIES_FOR_SHARED_LIB DEPENDENCIES_FOR_STATIC_LIB DEPENDENCIES_FOR_STATIC_PROFILE_LIB)
