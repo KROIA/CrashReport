@@ -14,7 +14,7 @@ namespace CrashReport
 
 		static ExceptionHandler& instance();
 	public:
-		typedef void (*ExceptionCallback)  (EXCEPTION_POINTERS*);
+		typedef void (*ExceptionCallback)(void);
 
 		static void setup(const std::string& crashExportPath);
 		static void setExceptionCallback(ExceptionCallback callback);

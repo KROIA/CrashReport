@@ -63,8 +63,7 @@ namespace CrashReport
 
 		
 		inst.generateCrashDump(pExceptionPointers);
-		if (inst.m_exeptionCallback)
-			(*inst.m_exeptionCallback)(pExceptionPointers);
+		
 
 		onTerminate();
 	}
@@ -74,6 +73,9 @@ namespace CrashReport
 		STACK_WATCHER_FUNC;
 		ExceptionHandler& inst = ExceptionHandler::instance();
 		
+		if (inst.m_exeptionCallback)
+			(*inst.m_exeptionCallback)();
+
 		std::exception_ptr exptr = std::current_exception();
 		try {
 			std::rethrow_exception(exptr);

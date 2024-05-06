@@ -5,7 +5,7 @@
 
 
 void crashTest();
-void exceptionCallback(EXCEPTION_POINTERS*);
+void exceptionCallback();
 
 
 int main(int argc, char* argv[])
@@ -33,7 +33,7 @@ void crashTest()
 	//*ptr = 42;      // <<-- Crashes here
 }
 
-void exceptionCallback(EXCEPTION_POINTERS*)
+void exceptionCallback()
 {
 	std::cout << "\nCallback reached\n\n";
 }
