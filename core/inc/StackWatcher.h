@@ -6,7 +6,7 @@
 namespace CrashReport
 {
 
-#ifdef __FUNCSIG__
+#ifndef __FUNCSIG__
 #define __FUNCSIG__ __PRETTY_FUNCTION__
 #endif
 #define STACK_WATCHER_FUNC \
