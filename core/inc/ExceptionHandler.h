@@ -22,6 +22,7 @@ namespace CrashReport
 		
 	private:
 		static void onException(EXCEPTION_POINTERS* pExceptionPointers);
+		static void onTerminate();
 
 		
 

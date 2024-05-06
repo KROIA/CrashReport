@@ -18,7 +18,7 @@ int main(int argc, char* argv[])
 	CrashReport::ExceptionHandler::setExceptionCallback(exceptionCallback);
 
 	crashTest();
-
+	std::cout << "End of program\n";
 	return 0;
 }
 
@@ -28,8 +28,9 @@ void crashTest()
 	STACK_WATCHER_FUNC;
 
 	// Cause a segmentation fault (access violation) intentionally
-	int* ptr = (int*)5;
-	*ptr = 42;      // <<-- Crashes here
+	int* ptr = (int*)0;
+	throw std::exception("Test exception");
+	//*ptr = 42;      // <<-- Crashes here
 }
 
 void exceptionCallback(EXCEPTION_POINTERS*)
