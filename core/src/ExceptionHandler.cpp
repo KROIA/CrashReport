@@ -58,7 +58,7 @@ namespace CrashReport
 
 	void ExceptionHandler::onException(EXCEPTION_POINTERS* pExceptionPointers)
 	{
-		STACK_WATCHER_FUNC;
+		//STACK_WATCHER_FUNC;
 		ExceptionHandler& inst = ExceptionHandler::instance();
 
 		
@@ -70,7 +70,7 @@ namespace CrashReport
 	[[noreturn]]
 	void ExceptionHandler::onTerminate()
 	{
-		STACK_WATCHER_FUNC;
+		//STACK_WATCHER_FUNC;
 		ExceptionHandler& inst = ExceptionHandler::instance();
 		
 		if (inst.m_exeptionCallback)
@@ -113,7 +113,7 @@ namespace CrashReport
 	}
 	void ExceptionHandler::saveStackTrace()
 	{
-		STACK_WATCHER_FUNC;
+		//STACK_WATCHER_FUNC;
 		std::string filePath = m_crashExportPath + "\\" + getExeName() + "_stack.txt";
 		std::wstring wPath = std::wstring(m_crashExportPath.begin(), m_crashExportPath.end());
 		// Attempt to create the directory
@@ -189,7 +189,7 @@ namespace CrashReport
 	//[[noreturn]]
 	LONG WINAPI ExceptionHandlerCallback(EXCEPTION_POINTERS* pExceptionPointers)
 	{
-		STACK_WATCHER_FUNC;
+		//STACK_WATCHER_FUNC;
 		// Generate crash dump
 		ExeptionHandlerInternal::onException(pExceptionPointers);
 		//exit(1);
