@@ -2,6 +2,9 @@
 #include "CrashReport_base.h"
 #include <iostream>
 #include <string>
+#include <windows.h>
+#include <mutex>
+#include <unordered_map>
 
 namespace CrashReport
 {
@@ -64,8 +67,15 @@ namespace CrashReport
         const char* m_name;
         size_t m_stackPos;
 
-        static StackWatcher* s_stack[]; // list to hold the current living stack instances.
-        static size_t s_currentStackPos;
-        static const size_t s_stackSize = 1000;
+        struct StackContainer
+        {
+            size_t currentStackPos = 0;
+            std::vector<StackWatcher*> stack;
+        };
+
+        // Key is the Thread ID
+        static std::unordered_map<DWORD , StackContainer> s_stack; // list to hold the current living stack instances.
+        static std::mutex s_mutex;
+        static const size_t s_defaultStackSize = 1000;
     };
 }

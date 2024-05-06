@@ -1,8 +1,14 @@
 #include "ExceptionHandler.h"
 #include "StackWatcher.h"
+#include "CrashReport_info.h"
 #include <fstream>
 #include <sstream>
+#include <signal.h>
 #include <DbgHelp.h>
+#include <iomanip> // for std::put_time
+#include <ctime>
+#include <chrono>
+
 
 // Define the maximum stack frames to capture
 #define MAX_FRAMES 100
@@ -10,6 +16,46 @@
 namespace CrashReport
 {
 	static LONG WINAPI ExceptionHandlerCallback(EXCEPTION_POINTERS* pExceptionPointers);
+	static int s_abortSignal = 0;
+
+	extern "C" void abortHandle(int signal_number)
+	{
+		s_abortSignal = signal_number;
+		ExceptionHandler::terminate();
+	}
+
+	static const char* abortSignalToString(int signal)
+	{
+		switch (signal)
+		{
+		case SIGINT: return "SIGINT: interrupt";
+		case SIGILL: return "SIGILL: illegal instruction - invalid function image";
+		case SIGFPE: return "SIGFPE: floating point exception";
+		case SIGSEGV: return "SIGSEGV: segment violation";
+		case SIGTERM: return "SIGTERM: Software termination signal from kill";
+		case SIGBREAK: return "SIGBREAK: Ctrl-Break sequence";
+		case SIGABRT: return "SIGABRT: abnormal termination triggered by abort call";
+		case SIGABRT_COMPAT: return "SIGABRT_COMPAT: SIGABRT compatible with other platforms, same as SIGABRT";
+		}
+		return "Unknown signal";
+	}
+
+	static std::string getCurrentDateTime() 
+	{
+		// Get current time
+		auto now = std::chrono::system_clock::now();
+		std::time_t currentTime = std::chrono::system_clock::to_time_t(now);
+
+		// Convert current time to local time
+		std::tm localTime;
+		localtime_s(&localTime, &currentTime);
+
+		// Format the time as a string
+		std::ostringstream oss;
+		oss << std::put_time(&localTime, "%Y-%m-%d %H:%M:%S");
+
+		return oss.str();
+	}
 
 	/// <summary>
 	/// Calls the private function of the public class
@@ -43,6 +89,14 @@ namespace CrashReport
 	void ExceptionHandler::setup(const std::string& crashExportPath)
 	{
 		SetUnhandledExceptionFilter(ExceptionHandlerCallback);
+		signal(SIGINT, &abortHandle);
+		signal(SIGILL, &abortHandle);
+		signal(SIGFPE, &abortHandle);
+		signal(SIGSEGV, &abortHandle);
+		signal(SIGTERM, &abortHandle);
+		signal(SIGBREAK, &abortHandle);
+		signal(SIGABRT, &abortHandle);
+		signal(SIGABRT_COMPAT, &abortHandle);
 
 		ExceptionHandler& handler = ExceptionHandler::instance();
 		handler.m_crashExportPath = crashExportPath;
@@ -54,6 +108,10 @@ namespace CrashReport
 	void ExceptionHandler::setExceptionCallback(ExceptionCallback callback)
 	{
 		ExceptionHandler::instance().m_exeptionCallback = callback;
+	}
+	void ExceptionHandler::terminate()
+	{
+		ExceptionHandler::onTerminate();
 	}
 
 	void ExceptionHandler::onException(EXCEPTION_POINTERS* pExceptionPointers)
@@ -84,8 +142,9 @@ namespace CrashReport
 			std::fprintf(stderr, "Terminated due to exception: %s\n", ex.what());
 		}
 
-		
 		inst.saveStackTrace();
+
+		
 		exit(1);
 	}
 
@@ -119,6 +178,18 @@ namespace CrashReport
 		// Attempt to create the directory
 		CreateDirectoryW(wPath.c_str(), NULL);
 		std::stringstream stream;
+
+		// Print library information
+		LibraryInfo::printInfo(stream);
+
+		stream << "\n\n";
+		stream << "Timestamp: " << getCurrentDateTime() << "\n";
+		stream << "An exception caused a crash.\n";
+		stream << "Crashed thread ID: "<< GetCurrentThreadId() << "\n";
+		
+		if(s_abortSignal != 0)
+			stream << "Abort signal: "<< s_abortSignal << " " << abortSignalToString(s_abortSignal) << "\n";
+		stream << "\n";
 		
 
 		void* stack[MAX_FRAMES];
@@ -153,7 +224,7 @@ namespace CrashReport
 				std::string symName = symbol->Name;
 				if (symName.size() < length)
 					length = length - symName.size();
-				stream << "Frame: [" << i << "]\t" << symName << std::string(length, ' ') << " Return address: " << std::hex << returnAddress << std::dec << std::endl;
+				stream << "    [" << i << "]\t" << symName << std::string(length, ' ') << " Return address: " << std::hex << returnAddress << std::dec << std::endl;
 				//printf("Frame %d: %s Return address: 0x%llX\n", i, symbol->Name, returnAddress);
 			}
 		}

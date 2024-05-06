@@ -19,7 +19,7 @@ namespace CrashReport
 		static void setup(const std::string& crashExportPath);
 		static void setExceptionCallback(ExceptionCallback callback);
 
-		
+		static void terminate();
 	private:
 		static void onException(EXCEPTION_POINTERS* pExceptionPointers);
 		static void onTerminate();
