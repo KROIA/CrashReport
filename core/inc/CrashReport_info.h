@@ -4,7 +4,9 @@
 
 /// USER_SECTION_END
 
-#include "CrashReport_base.h"
+#include "CrashReport_global.h"
+#include "CrashReport_debug.h"
+
 #include <sstream>
 
 #define STRINGIFY(x) #x

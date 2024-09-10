@@ -6,6 +6,7 @@
 
 #include "CrashReport_global.h"
 #include "CrashReport_debug.h"
+#include "CrashReport_info.h"
 
 /// USER_SECTION_START 2
 
