@@ -1,4 +1,5 @@
 ## description: Simple library to catch exceptions that causes a crash
+include(FetchContent)
 
 function(dep SHARED_LIB STATIC_LIB STATIC_PROFILE_LIB)
     # Define the git repository and tag to download from
