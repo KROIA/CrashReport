@@ -1,4 +1,5 @@
 ## description: DbgHelp
+include(FetchContent)
 
 function(dep SHARED_LIB STATIC_LIB STATIC_PROFILE_LIB)
 
