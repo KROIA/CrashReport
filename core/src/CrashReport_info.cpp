@@ -1,5 +1,4 @@
 #include "CrashReport_info.h"
-#include "CrashReport_debug.h"
 
 /// USER_SECTION_START 1
 
@@ -151,25 +150,7 @@ namespace CrashReport
 	}
 #endif
 
-	// Implementation of the Profiler start/stop functions
-	void Profiler::start()
-	{
-#ifdef CR_PROFILING
-		EASY_PROFILER_ENABLE;
-#endif
-	}
-	void Profiler::stop()
-	{
-		stop("profile.prof");
-	}
-	void Profiler::stop(const char* profilerOutputFile)
-	{
-#ifdef CR_PROFILING
-		profiler::dumpBlocksToFile(profilerOutputFile);
-#else
-		(void)profilerOutputFile;
-#endif
-	}
+
 
 
 /// USER_SECTION_START 4
