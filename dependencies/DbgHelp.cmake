@@ -2,7 +2,7 @@
 include(FetchContent)
 
 function(dep LIBRARY_MACRO_NAME SHARED_LIB STATIC_LIB STATIC_PROFILE_LIB)
-	set(LIB_MACRO_NAME DBG_HELP)
+	set(LIB_MACRO_NAME DBG_HELP_LIBRARY_AVAILABLE)
 
 	# Add this library to the specific profiles of this project
 	list(APPEND DEPS_FOR_SHARED_LIB DbgHelp.lib)

@@ -6,7 +6,7 @@
 /// USER_SECTION_END
 
 // The Logger library is automaticly included if the logger dependency .cmake file is available
-#if defined(LOGGER)
+#if LOGGER_LIBRARY_AVAILABLE == 1
 	#include "Logger.h"
 #endif
 
@@ -111,7 +111,7 @@ namespace CrashReport
 /// USER_SECTION_END
 
 
-#if defined(LOGGER)
+#if LOGGER_LIBRARY_AVAILABLE == 1
 	class CRASH_REPORT_EXPORT Logger 
 	{
 		/// USER_SECTION_START 8
