@@ -12,7 +12,7 @@ namespace CrashReport
     {
         DWORD threadID = GetCurrentThreadId();
         std::lock_guard<std::mutex> lock(s_mutex);
-        auto& it = s_stack.find(threadID);
+        const auto& it = s_stack.find(threadID);
         if (it == s_stack.end())
         {
             s_stack[threadID].currentStackPos = 1;
@@ -33,7 +33,7 @@ namespace CrashReport
     {
         DWORD threadID = GetCurrentThreadId();
         std::lock_guard<std::mutex> lock(s_mutex);
-        auto& it = s_stack.find(threadID);
+        const auto& it = s_stack.find(threadID);
         if (it == s_stack.end())
             return; // shuld not happen
         if (it->second.currentStackPos != m_stackPos)
