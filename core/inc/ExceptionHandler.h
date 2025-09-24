@@ -6,7 +6,7 @@
 namespace CrashReport
 {
 	class ExeptionHandlerInternal;
-	class CRASH_REPORT_EXPORT ExceptionHandler
+	class CRASH_REPORT_API ExceptionHandler
 	{
 		friend ExeptionHandlerInternal;
 		ExceptionHandler();
