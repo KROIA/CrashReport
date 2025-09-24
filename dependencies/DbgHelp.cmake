@@ -1,5 +1,4 @@
 ## description: DbgHelp
-include(FetchContent)
 
 function(dep LIBRARY_MACRO_NAME SHARED_LIB STATIC_LIB STATIC_PROFILE_LIB)
 	set(LIB_MACRO_NAME DBG_HELP_LIBRARY_AVAILABLE)

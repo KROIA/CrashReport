@@ -11,13 +11,13 @@
 #ifndef BUILD_STATIC
 	//#pragma message("CRASHREPORT_LIB is a shared library")
 	#if defined(CRASHREPORT_LIB)
-		#define CRASH_REPORT_EXPORT __declspec(dllexport)
+		#define CRASH_REPORT_API __declspec(dllexport)
 	#else
-		#define CRASH_REPORT_EXPORT __declspec(dllimport)
+		#define CRASH_REPORT_API __declspec(dllimport)
 	#endif
 #else 
 	//#pragma message("CRASHREPORT_LIB is a static library")
-	#define CRASH_REPORT_EXPORT
+	#define CRASH_REPORT_API
 #endif
 
 /// USER_SECTION_START 2

@@ -29,7 +29,7 @@ namespace CrashReport
 
 /// USER_SECTION_END
 
-	class CRASH_REPORT_EXPORT LibraryInfo
+	class CRASH_REPORT_API LibraryInfo
 	{
 		LibraryInfo() = delete;
 		LibraryInfo(const LibraryInfo&) = delete;

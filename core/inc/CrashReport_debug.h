@@ -89,7 +89,7 @@ namespace CrashReport
 /// USER_SECTION_START 4
 
 /// USER_SECTION_END
-	class CRASH_REPORT_EXPORT Profiler
+	class CRASH_REPORT_API Profiler
 	{
 	public:
 		/// USER_SECTION_START 5
@@ -112,7 +112,7 @@ namespace CrashReport
 
 
 #if LOGGER_LIBRARY_AVAILABLE == 1
-	class CRASH_REPORT_EXPORT Logger 
+	class CRASH_REPORT_API Logger 
 	{
 		/// USER_SECTION_START 8
 
