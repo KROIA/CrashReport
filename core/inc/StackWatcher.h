@@ -42,7 +42,7 @@ namespace CrashReport
     ///     // do stuff ...
     /// }
     /// </summary>
-    class CRASH_REPORT_EXPORT StackWatcher
+    class CRASH_REPORT_API StackWatcher
     {
     public:
         StackWatcher(const char* name);
