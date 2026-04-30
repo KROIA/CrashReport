@@ -29,7 +29,7 @@ namespace CrashReport
 		static void onNewFailure();
 
 		void generateCrashDump(EXCEPTION_POINTERS* pExceptionPointers);
-		void saveStackTrace();
+		void saveStackTrace(EXCEPTION_POINTERS* pExceptionPointers = nullptr);
 		std::string getExeName() const;
 		static bool tryAcquireCrashLock();
 
@@ -37,5 +37,6 @@ namespace CrashReport
 		ExceptionCallback m_exeptionCallback = nullptr;
 		static volatile long s_crashFlag;
 		static volatile long s_insideCrashHandler;
+		static EXCEPTION_POINTERS* s_lastExceptionPointers;
 	};
 }
