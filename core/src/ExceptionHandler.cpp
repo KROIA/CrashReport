@@ -4,7 +4,10 @@
 #include <fstream>
 #include <sstream>
 #include <signal.h>
+#include <new>
+#include <malloc.h>   // for _resetstkoflw
 #include <DbgHelp.h>
+#include <heapapi.h>  // for HeapSetInformation
 #include <iomanip> // for std::put_time
 #include <ctime>
 #include <chrono>
@@ -17,10 +20,34 @@ namespace CrashReport
 {
 	static LONG WINAPI ExceptionHandlerCallback(EXCEPTION_POINTERS* pExceptionPointers);
 	static int s_abortSignal = 0;
+	volatile long ExceptionHandler::s_crashFlag = 0;
+	volatile long ExceptionHandler::s_insideCrashHandler = 0;
+
+	// Custom exception code for signal-based crashes (so SEH filter can catch them)
+	#define CRASH_REPORT_SIGNAL_EXCEPTION 0xE0000001
+
+	// Helper that raises a benign SEH exception so the SEH path captures
+	// EXCEPTION_POINTERS for a minidump. Used by onTerminate when we don't
+	// already have exception pointers (signal/terminate path).
+	static int generateDumpFromCurrentContextFilter(EXCEPTION_POINTERS* p, ExceptionHandler* inst);
+	static void generateDumpFromCurrentContext(ExceptionHandler* inst)
+	{
+		__try {
+			RaiseException(CRASH_REPORT_SIGNAL_EXCEPTION, 0, 0, nullptr);
+		}
+		__except (generateDumpFromCurrentContextFilter(GetExceptionInformation(), inst)) {
+			// dump generated in filter
+		}
+	}
 
 	extern "C" void abortHandle(int signal_number)
 	{
 		s_abortSignal = signal_number;
+		// Re-raise as SEH exception so the unhandled exception filter is called
+		// (which captures EXCEPTION_POINTERS for the minidump).
+		ULONG_PTR args[1] = { static_cast<ULONG_PTR>(signal_number) };
+		RaiseException(CRASH_REPORT_SIGNAL_EXCEPTION, 0, 1, args);
+		// If RaiseException returns (it shouldn't for unhandled), fall through to terminate.
 		ExceptionHandler::terminate();
 	}
 
@@ -67,7 +94,25 @@ namespace CrashReport
 		{
 			ExceptionHandler::onException(pExceptionPointers);
 		}
+		static void generateCrashDump(ExceptionHandler* inst, EXCEPTION_POINTERS* p)
+		{
+			inst->generateCrashDump(p);
+		}
+		static void markInsideCrashHandler()
+		{
+			InterlockedExchange(&ExceptionHandler::s_insideCrashHandler, 1);
+		}
+		static ExceptionHandler& getInstance()
+		{
+			return ExceptionHandler::instance();
+		}
 	};
+
+	static int generateDumpFromCurrentContextFilter(EXCEPTION_POINTERS* p, ExceptionHandler* inst)
+	{
+		ExeptionHandlerInternal::generateCrashDump(inst, p);
+		return EXCEPTION_EXECUTE_HANDLER;
+	}
 
 
 	ExceptionHandler::ExceptionHandler()
@@ -88,7 +133,39 @@ namespace CrashReport
 
 	void ExceptionHandler::setup(const std::string& crashExportPath)
 	{
+		// Reserve 256KB of guaranteed stack for the SEH filter so that
+		// stack overflow crashes can run the handler (DbgHelp + iostreams
+		// are stack-hungry) with sufficient room.
+		ULONG stackGuarantee = 256 * 1024;
+		SetThreadStackGuarantee(&stackGuarantee);
+
+		// Force termination-on-corruption so heap corruption raises a clean
+		// STATUS_HEAP_CORRUPTION exception that the SEH filter can catch.
+		HeapSetInformation(GetProcessHeap(),
+			HeapEnableTerminationOnCorruption,
+			nullptr, 0);
+
+		// Windows Structured Exception Handling.
+		// SetUnhandledExceptionFilter runs only when no handler in the chain
+		// caught the exception. Some host runtimes (e.g. CLR, certain CRT
+		// versions) install handlers that catch stack overflow first, so we
+		// also register a Vectored Exception Handler which runs *before*
+		// any SEH frame.
 		SetUnhandledExceptionFilter(ExceptionHandlerCallback);
+		AddVectoredExceptionHandler(1, [](EXCEPTION_POINTERS* p) -> LONG {
+			// Only handle stack overflow here; everything else continues
+			// through the normal SEH chain to SetUnhandledExceptionFilter.
+			if (p && p->ExceptionRecord &&
+				p->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW)
+			{
+				_resetstkoflw();
+				ExeptionHandlerInternal::onException(p);
+				ExitProcess(1);
+			}
+			return EXCEPTION_CONTINUE_SEARCH;
+		});
+
+		// Signal handlers (work alongside SEH on Windows)
 		signal(SIGINT, &abortHandle);
 		signal(SIGILL, &abortHandle);
 		signal(SIGFPE, &abortHandle);
@@ -98,11 +175,20 @@ namespace CrashReport
 		signal(SIGABRT, &abortHandle);
 		signal(SIGABRT_COMPAT, &abortHandle);
 
+		// C++ exception handlers
+		std::set_terminate(&ExceptionHandler::onTerminate);
+
+		// Windows-specific handlers
+		_set_purecall_handler(&ExceptionHandler::onPureCall);
+		_set_invalid_parameter_handler(&ExceptionHandler::onInvalidParameter);
+		std::set_new_handler(&ExceptionHandler::onNewFailure);
+		// Note: Buffer security checks (/GS) are enabled by default in MSVC
+
+		// Disable Windows error dialog boxes
+		SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+
 		ExceptionHandler& handler = ExceptionHandler::instance();
 		handler.m_crashExportPath = crashExportPath;
-
-		// Set custom terminate handler
-		std::set_terminate(&ExceptionHandler::onTerminate);
 	}
 
 	void ExceptionHandler::setExceptionCallback(ExceptionCallback callback)
@@ -114,37 +200,173 @@ namespace CrashReport
 		ExceptionHandler::onTerminate();
 	}
 
+	bool ExceptionHandler::tryAcquireCrashLock()
+	{
+		// Use InterlockedCompareExchange to ensure only one thread handles the crash
+		return InterlockedCompareExchange(&s_crashFlag, 1, 0) == 0;
+	}
+
+	// Context shared with worker thread used for stack-overflow handling.
+	struct StackOverflowWorkerCtx
+	{
+		EXCEPTION_POINTERS* pExceptionPointers;
+		HANDLE doneEvent;
+	};
+
+	static DWORD WINAPI stackOverflowWorker(LPVOID param)
+	{
+		auto* ctx = static_cast<StackOverflowWorkerCtx*>(param);
+		ExceptionHandler& inst = ExeptionHandlerInternal::getInstance();
+		ExeptionHandlerInternal::generateCrashDump(&inst, ctx->pExceptionPointers);
+		// Mark already-in-handler so onTerminate doesn't try to generate another dump
+		ExeptionHandlerInternal::markInsideCrashHandler();
+		SetEvent(ctx->doneEvent);
+		// onTerminate doesn't return; it calls exit().
+		ExceptionHandler::terminate();
+		return 0;
+	}
+
 	void ExceptionHandler::onException(EXCEPTION_POINTERS* pExceptionPointers)
 	{
 		//STACK_WATCHER_FUNC;
+
+		// Ensure only one thread processes the crash
+		if (!tryAcquireCrashLock())
+		{
+			// Another thread is already handling a crash, wait indefinitely
+			Sleep(INFINITE);
+			return;
+		}
+
+		// Stack overflow needs a fresh thread with a clean stack — DbgHelp
+		// and iostreams use too much stack to run reliably on the faulting thread.
+		const bool isStackOverflow = pExceptionPointers &&
+			pExceptionPointers->ExceptionRecord &&
+			pExceptionPointers->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW;
+
+		if (isStackOverflow)
+		{
+			StackOverflowWorkerCtx ctx;
+			ctx.pExceptionPointers = pExceptionPointers;
+			ctx.doneEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+			HANDLE hThread = CreateThread(nullptr, 0, stackOverflowWorker, &ctx, 0, nullptr);
+			if (hThread)
+			{
+				WaitForSingleObject(hThread, INFINITE);
+				CloseHandle(hThread);
+			}
+			if (ctx.doneEvent) CloseHandle(ctx.doneEvent);
+			// If the worker exited, it already called exit(). Belt and braces:
+			ExitProcess(1);
+		}
+
 		ExceptionHandler& inst = ExceptionHandler::instance();
-
-		
 		inst.generateCrashDump(pExceptionPointers);
-		
 
+		// Mark that we're inside crash handler so onTerminate won't try to acquire lock again
+		InterlockedExchange(&s_insideCrashHandler, 1);
 		onTerminate();
 	}
 	[[noreturn]]
 	void ExceptionHandler::onTerminate()
 	{
 		//STACK_WATCHER_FUNC;
+
+		// Only try to acquire lock if we're not already inside the crash handler
+		bool alreadyInHandler = (InterlockedCompareExchange(&s_insideCrashHandler, 1, 1) == 1);
+		if (!alreadyInHandler && !tryAcquireCrashLock())
+		{
+			// Another thread is already handling a crash, wait indefinitely
+			Sleep(INFINITE);
+		}
+
 		ExceptionHandler& inst = ExceptionHandler::instance();
-		
+
+		// If we're not coming from onException, generate a dump using current context.
+		if (!alreadyInHandler)
+		{
+			generateDumpFromCurrentContext(&inst);
+			InterlockedExchange(&s_insideCrashHandler, 1);
+		}
+
 		if (inst.m_exeptionCallback)
-			(*inst.m_exeptionCallback)();
+		{
+			try {
+				(*inst.m_exeptionCallback)();
+			}
+			catch (...) {
+				// Prevent callback exceptions from interfering with crash handling
+			}
+		}
 
 		std::exception_ptr exptr = std::current_exception();
-		try {
-			std::rethrow_exception(exptr);
-		}
-		catch (std::exception& ex) {
-			std::fprintf(stderr, "Terminated due to exception: %s\n", ex.what());
+		if (exptr)
+		{
+			try {
+				std::rethrow_exception(exptr);
+			}
+			catch (std::exception& ex) {
+				std::fprintf(stderr, "Terminated due to exception: %s\n", ex.what());
+			}
+			catch (...) {
+				std::fprintf(stderr, "Terminated due to unknown exception\n");
+			}
 		}
 
 		inst.saveStackTrace();
 
-		
+		// Flush all output streams
+		std::fflush(stdout);
+		std::fflush(stderr);
+		std::cout.flush();
+		std::cerr.flush();
+
+		exit(1);
+	}
+
+	void ExceptionHandler::onPureCall()
+	{
+		if (!tryAcquireCrashLock())
+		{
+			Sleep(INFINITE);
+		}
+
+		std::fprintf(stderr, "Pure virtual function call detected\n");
+		ExceptionHandler& inst = ExceptionHandler::instance();
+		generateDumpFromCurrentContext(&inst);
+		InterlockedExchange(&s_insideCrashHandler, 1);
+		onTerminate();
+	}
+
+	void ExceptionHandler::onInvalidParameter(const wchar_t* expression, const wchar_t* function,
+		const wchar_t* file, unsigned int line, uintptr_t pReserved)
+	{
+		(void)expression;
+		(void)file;
+		(void)line;
+		(void)pReserved;
+
+		if (!tryAcquireCrashLock())
+		{
+			Sleep(INFINITE);
+		}
+
+		std::fprintf(stderr, "Invalid parameter detected in function %S\n", function ? function : L"unknown");
+		ExceptionHandler& inst = ExceptionHandler::instance();
+		generateDumpFromCurrentContext(&inst);
+		InterlockedExchange(&s_insideCrashHandler, 1);
+		onTerminate();
+	}
+
+	void ExceptionHandler::onNewFailure()
+	{
+		if (!tryAcquireCrashLock())
+		{
+			Sleep(INFINITE);
+		}
+
+		std::fprintf(stderr, "Memory allocation failure: new handler called\n");
+		ExceptionHandler::instance().saveStackTrace();
 		exit(1);
 	}
 
@@ -257,13 +479,20 @@ namespace CrashReport
 		return executableName;
 	}
 
-	//[[noreturn]]
 	LONG WINAPI ExceptionHandlerCallback(EXCEPTION_POINTERS* pExceptionPointers)
 	{
-		//STACK_WATCHER_FUNC;
-		// Generate crash dump
+		// Stack overflow needs special handling: reset the guard page so
+		// the handler can use the stack reserved by SetThreadStackGuarantee.
+		if (pExceptionPointers &&
+			pExceptionPointers->ExceptionRecord &&
+			pExceptionPointers->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW)
+		{
+			_resetstkoflw();
+		}
+
+		// Generate crash dump and handle the exception
 		ExeptionHandlerInternal::onException(pExceptionPointers);
-		//exit(1);
-		return 1;
+		// This line is never reached due to exit() in onException
+		return EXCEPTION_EXECUTE_HANDLER;
 	}
 }

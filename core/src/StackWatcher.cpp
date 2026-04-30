@@ -1,5 +1,7 @@
 #include "StackWatcher.h"
 #include <sstream>
+#include <thread>
+#include <chrono>
 
 namespace CrashReport
 {
@@ -68,15 +70,36 @@ namespace CrashReport
     }
     std::string StackWatcher::toString()
     {
-        std::lock_guard<std::mutex> lock(s_mutex);
+        // Use try_lock with timeout to avoid deadlock during crash handling
+        // (e.g., if stack overflow occurred while a StackWatcher held the mutex).
+        std::unique_lock<std::mutex> lock(s_mutex, std::try_to_lock);
+        if (!lock.owns_lock())
+        {
+            // Try once more with a short wait, then proceed without lock.
+            // Reading without lock during crash is a calculated risk since
+            // the program is about to terminate anyway.
+            for (int i = 0; i < 10 && !lock.owns_lock(); ++i)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                lock.try_lock();
+            }
+        }
+
         std::stringstream s("Stack: \n");
+        if (!lock.owns_lock())
+        {
+            s << "  (mutex unavailable, reading without lock)\n";
+        }
 
         for (const auto& thread : s_stack)
         {
             s << "  Stack of thread ID: " << thread.first << "\n";
             for (size_t i = 0; i < thread.second.currentStackPos; ++i)
             {
-                s << "    [" << i << "] " << thread.second.stack[i]->getName() << "\n";
+                if (thread.second.stack[i] != nullptr)
+                {
+                    s << "    [" << i << "] " << thread.second.stack[i]->getName() << "\n";
+                }
             }
             s << "\n";
         }

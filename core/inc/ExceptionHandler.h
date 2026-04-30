@@ -23,14 +23,19 @@ namespace CrashReport
 	private:
 		static void onException(EXCEPTION_POINTERS* pExceptionPointers);
 		static void onTerminate();
-
-		
+		static void onPureCall();
+		static void onInvalidParameter(const wchar_t* expression, const wchar_t* function,
+			const wchar_t* file, unsigned int line, uintptr_t pReserved);
+		static void onNewFailure();
 
 		void generateCrashDump(EXCEPTION_POINTERS* pExceptionPointers);
 		void saveStackTrace();
 		std::string getExeName() const;
+		static bool tryAcquireCrashLock();
 
 		std::string m_crashExportPath;
 		ExceptionCallback m_exeptionCallback = nullptr;
+		static volatile long s_crashFlag;
+		static volatile long s_insideCrashHandler;
 	};
 }
