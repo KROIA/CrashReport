@@ -589,15 +589,7 @@ namespace CrashReport
 			InterlockedExchange(&s_insideCrashHandler, 1);
 		}
 
-		if (inst.m_exeptionCallback)
-		{
-			try {
-				(*inst.m_exeptionCallback)();
-			}
-			catch (...) {
-				// Prevent callback exceptions from interfering with crash handling
-			}
-		}
+		
 
 		// Note: don't consume std::current_exception() here — saveStackTrace()
 		// reads it to include the what() message in the report.
@@ -609,6 +601,17 @@ namespace CrashReport
 		std::fflush(stderr);
 		std::cout.flush();
 		std::cerr.flush();
+
+
+		if (inst.m_exeptionCallback)
+		{
+			try {
+				(*inst.m_exeptionCallback)();
+			}
+			catch (...) {
+				// Prevent callback exceptions from interfering with crash handling
+			}
+		}
 
 		exit(1);
 	}
