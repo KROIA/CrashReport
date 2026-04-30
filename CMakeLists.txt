@@ -33,7 +33,7 @@ include(cmake/utility.cmake)
 set(LIBRARY_NAME CrashReport)                   # <AUTO_REPLACED>
 
 # Library version (used for CMake package version file)
-set(LIBRARY_VERSION "1.0.0")                    # <AUTO_REPLACED>
+set(LIBRARY_VERSION "1.1.0")                    # <AUTO_REPLACED>
 
 # Define is only active if the library is built
 set(LIB_DEFINE CRASHREPORT_LIB)                # <AUTO_REPLACED>

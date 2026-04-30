@@ -38,6 +38,7 @@ int main(int argc, char* argv[])
 
 	// Setup crash reporting
 	CrashReport::ExceptionHandler::setup("test_crashFiles");
+	CrashReport::ExceptionHandler::setApplicationInfo("CrashTestRunner", "1.0.0");
 	CrashReport::ExceptionHandler::setExceptionCallback(exceptionCallback);
 
 	std::cout << "\n";

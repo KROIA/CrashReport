@@ -19,6 +19,12 @@ namespace CrashReport
 		static void setup(const std::string& crashExportPath);
 		static void setExceptionCallback(ExceptionCallback callback);
 
+		// Optional: attach application/caller-library metadata to every crash
+		// report. Both fields are free-form strings and appear in the
+		// "Application Information" section at the top of the report.
+		static void setApplicationInfo(const std::string& name,
+									   const std::string& version);
+
 		static void terminate();
 	private:
 		static void onException(EXCEPTION_POINTERS* pExceptionPointers);
@@ -34,6 +40,8 @@ namespace CrashReport
 		static bool tryAcquireCrashLock();
 
 		std::string m_crashExportPath;
+		std::string m_appName;
+		std::string m_appVersion;
 		ExceptionCallback m_exeptionCallback = nullptr;
 		static volatile long s_crashFlag;
 		static volatile long s_insideCrashHandler;

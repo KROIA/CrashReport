@@ -17,6 +17,7 @@ int main(int argc, char* argv[])
 	CrashReport::Profiler::start();
 	CrashReport::LibraryInfo::printInfo();
 	CrashReport::ExceptionHandler::setup("crashFiles");
+	CrashReport::ExceptionHandler::setApplicationInfo("LibraryExample", "1.0.0");
 	CrashReport::ExceptionHandler::setExceptionCallback(exceptionCallback);
 
 	std::thread t1([]() {

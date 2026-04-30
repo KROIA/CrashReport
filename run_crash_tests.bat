@@ -4,7 +4,13 @@ REM Runs every crash scenario in CrashTestRunner.exe sequentially and logs the r
 
 setlocal enabledelayedexpansion
 
+REM Locate the executable. Visual Studio multi-config builds put outputs in
+REM build\Release (or build\Debug); single-config (Ninja, NMake) put them in
+REM build\. Prefer Release if both are available.
 set "EXECUTABLE_DIR=build"
+if exist "build\Debug\CrashTestRunner.exe"   set "EXECUTABLE_DIR=build\Debug"
+if exist "build\Release\CrashTestRunner.exe" set "EXECUTABLE_DIR=build\Release"
+
 set "EXECUTABLE=CrashTestRunner.exe"
 set "CRASH_DIR=test_crashFiles"
 set "LOG_DIR=test_results"
@@ -107,8 +113,16 @@ set "TEST_OUT=%LOG_DIR%\%TEST_NAME%_output.txt"
 >> "%LOG_FILE%" echo TEST: %TEST_NAME%
 >> "%LOG_FILE%" echo ----------------------------------------
 
-"%EXECUTABLE%" %TEST_NAME% > "%TEST_OUT%" 2>&1
+REM Run with a 15-second watchdog so a hung test does not block the suite.
+REM (Windows has no built-in process-timeout for child processes; use PowerShell.)
+powershell -NoProfile -Command ^
+  "$p = Start-Process -FilePath '.\%EXECUTABLE%' -ArgumentList '%TEST_NAME%' -PassThru -RedirectStandardOutput '%TEST_OUT%' -RedirectStandardError '%TEST_OUT%.err' -NoNewWindow;" ^
+  "if (-not $p.WaitForExit(15000)) { $p.Kill(); exit 124 } else { exit $p.ExitCode }"
 set "EXITCODE=!ERRORLEVEL!"
+if exist "%TEST_OUT%.err" (
+    type "%TEST_OUT%.err" >> "%TEST_OUT%"
+    del /F /Q "%TEST_OUT%.err" >nul 2>&1
+)
 
 type "%TEST_OUT%" >> "%LOG_FILE%"
 >> "%LOG_FILE%" echo Exit code: !EXITCODE!

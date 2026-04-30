@@ -486,6 +486,13 @@ namespace CrashReport
 	{
 		ExceptionHandler::instance().m_exeptionCallback = callback;
 	}
+	void ExceptionHandler::setApplicationInfo(const std::string& name,
+											  const std::string& version)
+	{
+		ExceptionHandler& inst = ExceptionHandler::instance();
+		inst.m_appName    = name;
+		inst.m_appVersion = version;
+	}
 	void ExceptionHandler::terminate()
 	{
 		ExceptionHandler::onTerminate();
@@ -693,9 +700,7 @@ namespace CrashReport
 		CreateDirectoryW(wPath.c_str(), NULL);
 		std::stringstream stream;
 
-		// === Header: library + timestamp ===
-		LibraryInfo::printInfo(stream);
-		stream << "\n";
+		// === Header: banner ===
 		stream << "================================================================\n";
 		stream << "                       CRASH REPORT\n";
 		stream << "================================================================\n";
@@ -705,6 +710,28 @@ namespace CrashReport
 		if (s_abortSignal != 0)
 			stream << "Signal:              " << s_abortSignal
 				   << " (" << abortSignalToString(s_abortSignal) << ")\n";
+		stream << "\n";
+
+		// === Application Information (user-supplied) ===
+		if (!m_appName.empty() || !m_appVersion.empty())
+		{
+			stream << "------ Application Information ------\n";
+			if (!m_appName.empty())
+				stream << "  Name:              " << m_appName << "\n";
+			if (!m_appVersion.empty())
+				stream << "  Version:           " << m_appVersion << "\n";
+			stream << "\n";
+		}
+
+		// === CrashReport library version (always present) ===
+		stream << "------ CrashReport Library ------\n";
+		stream << "  Name:              " << LibraryInfo::name << "\n";
+		stream << "  Version:           " << LibraryInfo::version.toString() << "\n";
+		stream << "  Build Type:        " << LibraryInfo::buildTypeStr << "\n";
+		stream << "  Compiler:          " << LibraryInfo::compiler
+			   << " " << LibraryInfo::compilerVersion << "\n";
+		stream << "  Compilation Date:  " << LibraryInfo::compilationDate
+			   << " " << LibraryInfo::compilationTime << "\n";
 		stream << "\n";
 
 		// === Exception details (cause of crash) ===
