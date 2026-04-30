@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
 	STACK_WATCHER_FUNC;
 
 	// Setup crash reporting
-	CrashReport::ExceptionHandler::setup("crashFiles_test");
+	CrashReport::ExceptionHandler::setup("test_crashFiles");
 	CrashReport::ExceptionHandler::setExceptionCallback(exceptionCallback);
 
 	std::cout << "\n";

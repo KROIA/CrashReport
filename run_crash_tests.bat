@@ -1,122 +1,152 @@
 @echo off
 REM Crash Test Runner Batch Script
-REM This script runs all crash tests sequentially and logs the results
+REM Runs every crash scenario in CrashTestRunner.exe sequentially and logs the results.
 
 setlocal enabledelayedexpansion
 
-set EXECUTABLE=build\bin\Release\CrashTestRunner.exe
-set LOG_DIR=test_results
-set TIMESTAMP=%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2%
-set TIMESTAMP=%TIMESTAMP: =0%
-set LOG_FILE=%LOG_DIR%\test_run_%TIMESTAMP%.log
+set "EXECUTABLE_DIR=build"
+set "EXECUTABLE=CrashTestRunner.exe"
+set "CRASH_DIR=test_crashFiles"
+set "LOG_DIR=test_results"
 
-REM Create log directory
+REM Build a filename-safe timestamp (YYYYMMDD_HHMMSS).
+for /f "tokens=2 delims==" %%I in ('wmic os get LocalDateTime /value ^| find "="') do set "_DT=%%I"
+set "TIMESTAMP=!_DT:~0,8!_!_DT:~8,6!"
+
+set "LOG_FILE=%LOG_DIR%\test_run_%TIMESTAMP%.log"
+
+cd "%EXECUTABLE_DIR%"
+
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+if not exist "%CRASH_DIR%" mkdir "%CRASH_DIR%"
 
 echo ========================================
 echo CrashReport Library - Crash Test Suite
 echo ========================================
 echo.
-echo Timestamp: %TIMESTAMP%
+echo Timestamp:  %TIMESTAMP%
 echo Executable: %EXECUTABLE%
-echo Log file: %LOG_FILE%
+echo Log file:   %LOG_FILE%
 echo.
 
-REM Check if executable exists
 if not exist "%EXECUTABLE%" (
     echo ERROR: Executable not found: %EXECUTABLE%
-    echo Please build the project first with:
+    echo Build the project first:
     echo   cmake -B build
     echo   cmake --build build --config Release
     echo.
-    pause
     exit /b 1
 )
 
-REM Create log header
-echo CrashReport Library - Crash Test Suite > "%LOG_FILE%"
-echo Timestamp: %TIMESTAMP% >> "%LOG_FILE%"
-echo ========================================= >> "%LOG_FILE%"
-echo. >> "%LOG_FILE%"
+REM Create log header.
+> "%LOG_FILE%" echo CrashReport Library - Crash Test Suite
+>> "%LOG_FILE%" echo Timestamp: %TIMESTAMP%
+>> "%LOG_FILE%" echo =========================================
+>> "%LOG_FILE%" echo.
 
-REM Define test list
-set TESTS=null divide stackoverflow exception abort purevirtual invalidparam accessviolation doubledelete bufferoverrun multithread nested
+set "TESTS=null divide stackoverflow exception abort purevirtual invalidparam accessviolation doubledelete bufferoverrun multithread nested"
+
+set /a PASSED=0
+set /a PARTIAL=0
+set /a FAILED=0
+set /a TOTAL=0
 
 echo Running crash tests...
 echo.
 
-set PASSED=0
-set FAILED=0
-set TOTAL=0
-
-REM Run each test
 for %%T in (%TESTS%) do (
     set /a TOTAL+=1
-    echo [%%T] Running test...
-    echo ---------------------------------------- >> "%LOG_FILE%"
-    echo TEST: %%T >> "%LOG_FILE%"
-    echo ---------------------------------------- >> "%LOG_FILE%"
-
-    REM Run the test and capture output
-    "%EXECUTABLE%" %%T > "%LOG_DIR%\%%T_output.txt" 2>&1
-    set EXITCODE=!ERRORLEVEL!
-
-    REM Log the output
-    type "%LOG_DIR%\%%T_output.txt" >> "%LOG_FILE%"
-    echo. >> "%LOG_FILE%"
-    echo Exit code: !EXITCODE! >> "%LOG_FILE%"
-    echo. >> "%LOG_FILE%"
-
-    REM Check if crash dump was created
-    if exist "crashFiles_test\CrashTestRunner.exe.dmp" (
-        echo [%%T] PASSED - Crash dump created
-        echo Result: PASSED - Crash dump created >> "%LOG_FILE%"
-        set /a PASSED+=1
-
-        REM Rename crash files with test name
-        move /Y "crashFiles_test\CrashTestRunner.exe.dmp" "crashFiles_test\%%T.dmp" >nul 2>&1
-        if exist "crashFiles_test\CrashTestRunner.exe_stack.txt" (
-            move /Y "crashFiles_test\CrashTestRunner.exe_stack.txt" "crashFiles_test\%%T_stack.txt" >nul 2>&1
-        )
-    ) else (
-        REM Some tests might not crash reliably
-        if !EXITCODE! EQU 0 (
-            echo [%%T] WARNING - Test completed without crash (may be expected)
-            echo Result: WARNING - No crash detected >> "%LOG_FILE%"
-        ) else (
-            echo [%%T] FAILED - Crash not properly handled
-            echo Result: FAILED - Crash not properly handled >> "%LOG_FILE%"
-            set /a FAILED+=1
-        )
-    )
-    echo. >> "%LOG_FILE%"
-    echo.
+    call :run_one %%T
 )
 
-REM Print summary
+echo.
 echo ========================================
 echo Test Summary
 echo ========================================
-echo Total tests: %TOTAL%
-echo Passed:      %PASSED%
-echo Failed:      %FAILED%
+echo Total:   %TOTAL%
+echo Passed:  %PASSED%
+echo Partial: %PARTIAL%
+echo Failed:  %FAILED%
 echo.
-echo Results saved to: %LOG_FILE%
-echo Crash dumps saved to: crashFiles_test\
+echo Log file:    %LOG_FILE%
+echo Crash dumps: %CRASH_DIR%\
 echo.
 
-echo ========================================= >> "%LOG_FILE%"
-echo Test Summary >> "%LOG_FILE%"
-echo ========================================= >> "%LOG_FILE%"
-echo Total tests: %TOTAL% >> "%LOG_FILE%"
-echo Passed:      %PASSED% >> "%LOG_FILE%"
-echo Failed:      %FAILED% >> "%LOG_FILE%"
+>> "%LOG_FILE%" echo.
+>> "%LOG_FILE%" echo =========================================
+>> "%LOG_FILE%" echo Test Summary
+>> "%LOG_FILE%" echo =========================================
+>> "%LOG_FILE%" echo Total:   %TOTAL%
+>> "%LOG_FILE%" echo Passed:  %PASSED%
+>> "%LOG_FILE%" echo Partial: %PARTIAL%
+>> "%LOG_FILE%" echo Failed:  %FAILED%
 
 if %FAILED% GTR 0 (
-    echo WARNING: Some tests failed!
-    echo Check the log file for details.
-    echo.
+    exit /b 1
 )
+exit /b 0
 
-echo Press any key to exit...
-pause >nul
+
+REM ----------------------------------------------------------------------------
+REM Subroutine: run_one <test_name>
+REM Runs a single crash test, classifies the result, renames output files.
+REM ----------------------------------------------------------------------------
+:run_one
+set "TEST_NAME=%~1"
+set "DMP_FILE=%CRASH_DIR%\CrashTestRunner.exe.dmp"
+set "STACK_FILE=%CRASH_DIR%\CrashTestRunner.exe_stack.txt"
+
+REM Remove any leftover crash files from a previous run.
+if exist "%DMP_FILE%"   del /F /Q "%DMP_FILE%"
+if exist "%STACK_FILE%" del /F /Q "%STACK_FILE%"
+
+REM Per-test output goes here so the main log isn't polluted with crash spew.
+set "TEST_OUT=%LOG_DIR%\%TEST_NAME%_output.txt"
+
+>> "%LOG_FILE%" echo ----------------------------------------
+>> "%LOG_FILE%" echo TEST: %TEST_NAME%
+>> "%LOG_FILE%" echo ----------------------------------------
+
+"%EXECUTABLE%" %TEST_NAME% > "%TEST_OUT%" 2>&1
+set "EXITCODE=!ERRORLEVEL!"
+
+type "%TEST_OUT%" >> "%LOG_FILE%"
+>> "%LOG_FILE%" echo Exit code: !EXITCODE!
+
+REM Classify result based on which output files were produced.
+set "HAS_DMP=0"
+set "HAS_STACK=0"
+if exist "%DMP_FILE%"   set "HAS_DMP=1"
+if exist "%STACK_FILE%" set "HAS_STACK=1"
+
+if "!HAS_DMP!"=="1" if "!HAS_STACK!"=="1" goto :run_one_pass
+if "!HAS_DMP!"=="1"                       goto :run_one_partial
+if "!HAS_STACK!"=="1"                     goto :run_one_partial
+goto :run_one_fail
+
+:run_one_pass
+echo   [%TEST_NAME%] PASS - dump + stack trace generated
+>> "%LOG_FILE%" echo Result: PASS - dump + stack trace
+set /a PASSED+=1
+goto :run_one_archive
+
+:run_one_partial
+echo   [%TEST_NAME%] PARTIAL - only one output file generated
+>> "%LOG_FILE%" echo Result: PARTIAL - dump=!HAS_DMP! stack=!HAS_STACK!
+set /a PARTIAL+=1
+goto :run_one_archive
+
+:run_one_fail
+echo   [%TEST_NAME%] FAIL - no crash output produced
+>> "%LOG_FILE%" echo Result: FAIL - no output files
+set /a FAILED+=1
+goto :run_one_done
+
+:run_one_archive
+REM Rename the produced files so each test keeps its own copy.
+if exist "%DMP_FILE%"   move /Y "%DMP_FILE%"   "%CRASH_DIR%\%TEST_NAME%.dmp"      >nul 2>&1
+if exist "%STACK_FILE%" move /Y "%STACK_FILE%" "%CRASH_DIR%\%TEST_NAME%_stack.txt" >nul 2>&1
+
+:run_one_done
+>> "%LOG_FILE%" echo.
+exit /b 0
