@@ -9,6 +9,7 @@
 #include <DbgHelp.h>
 #include <heapapi.h>  // for HeapSetInformation
 #include <psapi.h>    // for GetProcessMemoryInfo
+#include <tlhelp32.h> // for CreateToolhelp32Snapshot, Thread32First/Next
 #include <iomanip> // for std::put_time
 #include <ctime>
 #include <chrono>
@@ -350,6 +351,126 @@ namespace CrashReport
 			s << "\n        at " << line.FileName << ":" << line.LineNumber;
 		}
 		s << "\n";
+	}
+
+	// Walk the stack of `thread` (already opened, owned by caller) using the
+	// supplied CONTEXT and write frames to `s`. Returns the number of frames
+	// emitted. Does not suspend/resume the thread — caller controls lifecycle.
+	static int walkThreadStackFromContext(std::ostream& s, HANDLE process, HANDLE thread, CONTEXT ctx)
+	{
+		STACKFRAME64 frame = {};
+		DWORD machine;
+#if defined(_M_X64) || defined(_M_AMD64)
+		machine = IMAGE_FILE_MACHINE_AMD64;
+		frame.AddrPC.Offset    = ctx.Rip;
+		frame.AddrFrame.Offset = ctx.Rbp;
+		frame.AddrStack.Offset = ctx.Rsp;
+#elif defined(_M_IX86)
+		machine = IMAGE_FILE_MACHINE_I386;
+		frame.AddrPC.Offset    = ctx.Eip;
+		frame.AddrFrame.Offset = ctx.Ebp;
+		frame.AddrStack.Offset = ctx.Esp;
+#else
+		machine = IMAGE_FILE_MACHINE_UNKNOWN;
+#endif
+		frame.AddrPC.Mode    = AddrModeFlat;
+		frame.AddrFrame.Mode = AddrModeFlat;
+		frame.AddrStack.Mode = AddrModeFlat;
+
+		int idx = 0;
+		while (idx < MAX_FRAMES &&
+			StackWalk64(machine, process, thread, &frame, &ctx,
+				NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL))
+		{
+			if (frame.AddrPC.Offset == 0) break;
+			writeStackFrame(s, process, frame.AddrPC.Offset, idx);
+			++idx;
+		}
+		return idx;
+	}
+
+	// Iterate every thread in the current process (except `excludeTid`) and
+	// dump a DbgHelp stack trace for each. Symbols must already be initialized.
+	static void writeAllOtherThreadsStacks(std::ostream& s, HANDLE process, DWORD excludeTid)
+	{
+		HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+		if (snap == INVALID_HANDLE_VALUE)
+		{
+			s << "  (CreateToolhelp32Snapshot failed: " << GetLastError() << ")\n";
+			return;
+		}
+
+		THREADENTRY32 te = {};
+		te.dwSize = sizeof(te);
+		const DWORD pid = GetCurrentProcessId();
+		int threadCount = 0;
+
+		if (Thread32First(snap, &te))
+		{
+			do {
+				if (te.dwSize < FIELD_OFFSET(THREADENTRY32, th32OwnerProcessID) + sizeof(te.th32OwnerProcessID))
+				{
+					te.dwSize = sizeof(te);
+					continue;
+				}
+				if (te.th32OwnerProcessID != pid) { te.dwSize = sizeof(te); continue; }
+				if (te.th32ThreadID == excludeTid) { te.dwSize = sizeof(te); continue; }
+
+				DWORD tid = te.th32ThreadID;
+				s << "--- Thread " << tid << " ---\n";
+
+				HANDLE hThread = OpenThread(
+					THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME | THREAD_QUERY_INFORMATION,
+					FALSE, tid);
+				if (!hThread)
+				{
+					s << "  (OpenThread failed: " << GetLastError() << ")\n\n";
+					te.dwSize = sizeof(te);
+					continue;
+				}
+
+				bool suspended = false;
+				__try
+				{
+					DWORD prev = SuspendThread(hThread);
+					if (prev == (DWORD)-1)
+					{
+						s << "  (SuspendThread failed: " << GetLastError() << ")\n";
+					}
+					else
+					{
+						suspended = true;
+						CONTEXT ctx = {};
+						ctx.ContextFlags = CONTEXT_FULL;
+						if (!GetThreadContext(hThread, &ctx))
+						{
+							s << "  (GetThreadContext failed: " << GetLastError() << ")\n";
+						}
+						else
+						{
+							int frames = walkThreadStackFromContext(s, process, hThread, ctx);
+							if (frames == 0)
+								s << "  (no frames)\n";
+						}
+					}
+				}
+				__except (EXCEPTION_EXECUTE_HANDLER)
+				{
+					s << "  (exception while walking thread " << tid << ")\n";
+				}
+
+				if (suspended) ResumeThread(hThread);
+				CloseHandle(hThread);
+				s << "\n";
+				++threadCount;
+				te.dwSize = sizeof(te);
+			} while (Thread32Next(snap, &te));
+		}
+
+		if (threadCount == 0)
+			s << "  (no other threads)\n";
+
+		CloseHandle(snap);
 	}
 
 	/// <summary>
@@ -804,6 +925,7 @@ namespace CrashReport
 		SymInitialize(process, searchPath.empty() ? NULL : searchPath.c_str(), TRUE);
 
 		stream << "------ Stack Trace (DbgHelp) ------\n";
+		stream << "Thread ID: " << GetCurrentThreadId() << "\n";
 
 		if (pExceptionPointers && pExceptionPointers->ContextRecord)
 		{
@@ -850,6 +972,10 @@ namespace CrashReport
 				writeStackFrame(stream, process, (DWORD64)stack[i], i);
 			}
 		}
+
+		// === DbgHelp stack traces for all other threads ===
+		stream << "\n------ Stack Traces (All Other Threads) ------\n";
+		writeAllOtherThreadsStacks(stream, process, GetCurrentThreadId());
 
 		SymCleanup(process);
 
