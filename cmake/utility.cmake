@@ -31,6 +31,42 @@ if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
         "Root folder containing local dependency clones (one sub-folder per LIB_NAME). Absolute or relative to the project root.")
 endif()
 
+# ---------------------------------------------------------------------------
+# Force FetchContent subbuilds to inherit the outer project's generator.
+#
+# Without this, the very first configure runs the subbuild with whatever
+# generator FetchContent picks up implicitly (often Ninja on Windows when
+# ninja is on PATH), and writes CMAKE_GENERATOR:INTERNAL=Ninja into the
+# subbuild's CMakeCache.txt. Any later regenerate (e.g. after editing a
+# header) re-invokes that cached subbuild and CMake aborts with:
+#   "Does not match the generator used previously: Ninja"
+# because the outer build was created with "Visual Studio 17 2022" (or
+# similar). The error recurs on every regenerate until the dependency
+# subbuild caches are wiped manually.
+#
+# FetchContent's subbuild is a real sub-cmake invocation; it picks up
+# these vars from the parent cache when present, so propagating them as
+# CACHE entries fixes the mismatch for every dependency at once.
+# Only the top-level project sets them — when this template is itself a
+# FetchContent dep, the outer project will already have set them.
+# ---------------------------------------------------------------------------
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(CMAKE_GENERATOR "${CMAKE_GENERATOR}" CACHE INTERNAL
+        "Forwarded to FetchContent subbuilds so they match the outer generator")
+    if(CMAKE_GENERATOR_PLATFORM)
+        set(CMAKE_GENERATOR_PLATFORM "${CMAKE_GENERATOR_PLATFORM}" CACHE INTERNAL
+            "Forwarded to FetchContent subbuilds")
+    endif()
+    if(CMAKE_GENERATOR_TOOLSET)
+        set(CMAKE_GENERATOR_TOOLSET "${CMAKE_GENERATOR_TOOLSET}" CACHE INTERNAL
+            "Forwarded to FetchContent subbuilds")
+    endif()
+    if(CMAKE_MAKE_PROGRAM)
+        set(CMAKE_MAKE_PROGRAM "${CMAKE_MAKE_PROGRAM}" CACHE FILEPATH
+            "Forwarded to FetchContent subbuilds")
+    endif()
+endif()
+
 # Macro to search for files with a given extension.
 # call:
 #   GLOB_FILES(H_FILES *.h)
@@ -49,31 +85,67 @@ endfunction()
 
 # Function name: windeployqt
 # Params: targetName        Name of the target created using add_executable(...)
-#         outputPath        Path where the deployment will be done
-#     
+#         outputPath        Path where the install-time deployment will be done
+#
+# Behavior:
+#   1. Build-time (POST_BUILD): deploys Qt runtime next to the just-built exe
+#      so it can be launched directly from the build tree. Only registered if
+#      ${targetName} already exists in the current scope.
+#   2. Install-time (install CODE): deploys Qt runtime into ${outputPath} after
+#      the exe has been installed there. Unchanged from previous behavior.
 function(windeployqt targetName outputPath)
-    
+
     # check if QT_PATH is empty
     if (NOT QT_PATH)
-		message("QT_PATH is not set. include QtLocator.cmake first, to find a qt installation or assign a 
+		message("QT_PATH is not set. include QtLocator.cmake first, to find a qt installation or assign a
                  QT path to it. example: set(QT_PATH \"C:/Qt/5.14.2\")")
         return()
     endif()
 
-    set(targetExePath "${outputPath}/${targetName}.exe") 
-    set(DEPLOY_COMMAND  "${QT_PATH}/bin/windeployqt.exe 
-		--no-compiler-runtime 
+    # Build-time deploy alongside the just-built exe.
+    # Two gates:
+    #   1. TARGET must exist.
+    #   2. The target must have been declared in the SAME directory scope as
+    #      this call. add_custom_command(TARGET ...) is rejected by CMake when
+    #      the target was created in a different CMakeLists.txt — this is what
+    #      happens for easy_profiler's profiler_gui (created by FetchContent in
+    #      its own subtree). For those external targets we skip POST_BUILD and
+    #      rely solely on the install-time deploy below.
+    # $<TARGET_FILE_DIR:...> resolves to the per-config output directory, so
+    # this works correctly on multi-config generators (VS) as well as Ninja.
+    if(TARGET ${targetName})
+        get_target_property(_wdq_target_src_dir ${targetName} SOURCE_DIR)
+        if(_wdq_target_src_dir STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+            add_custom_command(TARGET ${targetName} POST_BUILD
+                COMMAND "${QT_PATH}/bin/windeployqt.exe"
+                        --no-compiler-runtime
+                        --translations de,en
+                        --no-system-d3d-compiler
+                        --no-opengl-sw
+                        --pdb
+                        --qmldir "${CMAKE_SOURCE_DIR}"
+                        --dir "$<TARGET_FILE_DIR:${targetName}>"
+                        "$<TARGET_FILE:${targetName}>"
+                COMMENT "Deploying Qt runtime alongside ${targetName}"
+                VERBATIM)
+        endif()
+        unset(_wdq_target_src_dir)
+    endif()
+
+    set(targetExePath "${outputPath}/${targetName}.exe")
+    set(DEPLOY_COMMAND  "${QT_PATH}/bin/windeployqt.exe
+		--no-compiler-runtime
 		--translations de,en
-		--no-system-d3d-compiler 
-		--no-opengl-sw 
-		--pdb 
+		--no-system-d3d-compiler
+		--no-opengl-sw
+		--pdb
 		--dir \"${outputPath}\" \"${targetExePath}\"
         --qmldir \"${CMAKE_SOURCE_DIR}\"")
 
 	set(CMD "${DEPLOY_COMMAND}")
 	string(REPLACE "\\" "/" CMD "${CMD}")
 
-	
+
 	install(
     CODE
     "execute_process(
@@ -81,7 +153,7 @@ function(windeployqt targetName outputPath)
         ${CMD}
     )"
 )
-	
+
 endfunction()
 
 
@@ -345,9 +417,19 @@ macro(downloadExternalLibrary)
             )
         endif()
     endif()
+
+    # Compatibility shim for very old upstream CMake projects (e.g. easy_profiler
+    # whose root CMakeLists.txt uses cmake_minimum_required(VERSION 2.x)).
+    # CMake 4.0+ rejects these unless CMAKE_POLICY_VERSION_MINIMUM is set.
+    # Idempotent: only sets a default when the user hasn't already supplied one.
+    if(NOT DEFINED CACHE{CMAKE_POLICY_VERSION_MINIMUM})
+        set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING
+            "Compatibility shim for very old upstream CMake projects")
+    endif()
+
     FetchContent_MakeAvailable(${LIB_NAME})
 
-    
+
     if (NOT DEFINED SHARED_LIB_DEPENDENCY)
         set(SHARED_LIB_DEPENDENCY ${LIB_NAME})
     endif()
