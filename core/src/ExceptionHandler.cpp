@@ -798,8 +798,16 @@ namespace CrashReport
 		// Attempt to create the directory
 		CreateDirectoryW(wPath.c_str(), NULL);
 
+		// check QT5 or QT6
+#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+		// For Windows
+		std::wstring wExeName = std::wstring(lpSTR_exeName, lpSTR_exeName + strlen(lpSTR_exeName));
+		HANDLE hDumpFile = CreateFile(wExeName.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+#else
 		// For Windows
 		HANDLE hDumpFile = CreateFile(lpSTR_exeName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+#endif 
+
 		if (hDumpFile != INVALID_HANDLE_VALUE) {
 			MINIDUMP_EXCEPTION_INFORMATION minidumpInfo;
 			minidumpInfo.ThreadId = GetCurrentThreadId();
@@ -999,7 +1007,16 @@ namespace CrashReport
 	std::string ExceptionHandler::getExeName() const
 	{
 		char path[MAX_PATH];
+
+		// check QT5 or QT6
+#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+		// For Windows
+		LPWSTR wPath = const_cast<LPWSTR>(std::wstring(m_crashExportPath.begin(), m_crashExportPath.end()).c_str());
+		GetModuleFileName(NULL, wPath, MAX_PATH);
+#else
 		GetModuleFileName(NULL, path, MAX_PATH);
+#endif
+
 		std::string executableName = path;
 		size_t lastSlashPos = executableName.find_last_of("\\");
 		if (lastSlashPos != std::string::npos) {
