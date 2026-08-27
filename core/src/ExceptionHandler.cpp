@@ -799,7 +799,7 @@ namespace CrashReport
 		CreateDirectoryW(wPath.c_str(), NULL);
 
 		// check QT5 or QT6
-#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 		// For Windows
 		std::wstring wExeName = std::wstring(lpSTR_exeName, lpSTR_exeName + strlen(lpSTR_exeName));
 		HANDLE hDumpFile = CreateFile(wExeName.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1009,7 +1009,7 @@ namespace CrashReport
 		char path[MAX_PATH];
 
 		// check QT5 or QT6
-#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+#if defined(QT_VERSION) && QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 		// For Windows
 		LPWSTR wPath = const_cast<LPWSTR>(std::wstring(m_crashExportPath.begin(), m_crashExportPath.end()).c_str());
 		GetModuleFileName(NULL, wPath, MAX_PATH);
